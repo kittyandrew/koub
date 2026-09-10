@@ -1,12 +1,10 @@
 #[macro_use]
 extern crate rocket;
 
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use prometheus::TextEncoder;
-use rocket::fairing::AdHoc;
-use rocket::tokio;
-use rocket_db_pools::Database;
-use rocket_db_pools::diesel::PgPool;
-use std::env::var;
+use rocket::{fairing::AdHoc, tokio};
+use std::{env::var, time::Duration};
 
 mod actions;
 mod api;
@@ -19,10 +17,6 @@ mod ntfy;
 mod prom;
 mod schema;
 
-#[derive(Database)]
-#[database("open-uptime-bot")]
-pub struct DB(PgPool);
-
 #[rocket::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
@@ -34,23 +28,20 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     prom::ENDPOINTS_REQUESTS_SERVED.reset();
     prom::ACTIVE_USERS.set(0);
 
-    let figment = rocket::Config::figment().merge((
-        "databases.open-uptime-bot",
-        rocket_db_pools::Config {
-            url: var("DATABASE_URL").expect("Database URL required"),
-            min_connections: Some(4),
-            max_connections: 1024,
-            connect_timeout: 5,
-            idle_timeout: None,
-            extensions: None,
-        },
-    ));
+    let manager = AsyncDieselConnectionManager::new(var("DATABASE_URL").expect("Database URL required"));
+    let pool = db::Pool::builder()
+        .max_size(1024)
+        .connection_timeout(Duration::from_secs(5))
+        .idle_timeout(None)
+        .max_lifetime(None)
+        .build(manager)
+        .await?;
 
     // @WARNING: Every route handler MUST use BAuth, AdminAuth, or RateLimitGuard
     //  to ensure IP rate limiting coverage. The IpRateLimitFairing sets a flag but
-    //  can't reject requests in Rocket 0.5 — guards must check the flag.
+    //  can't reject requests — guards must check the flag.
     //  The route-guard-lint check in flake.nix enforces this at build time.
-    rocket::custom(figment)
+    rocket::build()
         .mount(
             "/",
             routes![
@@ -77,7 +68,7 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             ],
         )
         .manage(context::Context::init())
-        .attach(DB::init())
+        .manage(pool)
         // Encoder for the prometheus metadata.
         .manage(TextEncoder::new())
         .manage(bauth::get_rate_limiter())
@@ -85,7 +76,8 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .attach(prom::PrometheusCollection)
         .attach(AdHoc::try_on_ignite("init db load", |rocket| async {
             // Populating users/tokens from the database.
-            let mut conn = DB::fetch(&rocket).unwrap().0.clone().get().await.unwrap();
+            let pool = rocket.state::<db::Pool>().unwrap().clone();
+            let mut conn = pool.get().await.unwrap();
             let items = db::get_all_states(&mut conn).await.unwrap();
             info!("Loading {n} users from the database!", n = items.len());
 
@@ -93,15 +85,8 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             for state in &items {
                 // Initialize per-user metrics from DB state
                 let uid_str = state.user.id.to_string();
-                prom::UPTIME_STATE
-                    .with_label_values(&[&uid_str])
-                    .set(i64::from(&state.uptime.status));
-                let touched_ts = state
-                    .uptime
-                    .touched_at
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs_f64();
+                prom::UPTIME_STATE.with_label_values(&[&uid_str]).set(i64::from(&state.uptime.status));
+                let touched_ts = state.uptime.touched_at.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64();
                 prom::LAST_SEEN_TIMESTAMP.with_label_values(&[&uid_str]).set(touched_ts);
             }
             prom::ACTIVE_USERS.set(items.len() as i64);
@@ -118,14 +103,13 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
 
             Ok(rocket)
         }))
-        .attach(AdHoc::try_on_ignite("background handle down", |rocket| async {
-            let context = rocket.state::<context::Context>().unwrap();
-            let pool = DB::fetch(&rocket).expect("RIP").0.clone();
-            tokio::spawn(background::background_handle_down(context.clone(), pool));
-            Ok(rocket)
+        .attach(AdHoc::on_liftoff("background handle down", |rocket| {
+            Box::pin(async move {
+                let context = rocket.state::<context::Context>().unwrap();
+                let pool = rocket.state::<db::Pool>().unwrap().clone();
+                tokio::spawn(background::background_handle_down(context.clone(), pool));
+            })
         }))
-        .ignite()
-        .await?
         .launch()
         .await?;
 

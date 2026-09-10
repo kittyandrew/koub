@@ -11,28 +11,15 @@ fn _esp_println_timestamp() -> u64 {
 }
 
 use embassy_executor::Spawner;
-use embassy_net::{
-    Runner, StackResources,
-    dns::DnsSocket,
-    tcp::client::{TcpClient, TcpClientState},
-};
+use embassy_net::{Runner, StackResources, dns::DnsSocket, tcp::client::TcpClient, tcp::client::TcpClientState};
 use embassy_time::{Duration, Timer};
 use esp_alloc as _;
 use esp_backtrace as _;
-use esp_hal::{
-    clock::CpuClock,
-    gpio::{Level, Output, OutputConfig},
-    interrupt::software::SoftwareInterruptControl,
-    ram,
-    rng::Rng,
-    timer::timg::TimerGroup,
-};
-use esp_radio::{
-    Controller,
-    wifi::{ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState},
-};
-use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
-use reqwless::request::RequestBuilder;
+use esp_hal::interrupt::software::SoftwareInterruptControl;
+use esp_hal::{clock::CpuClock, gpio::Level, gpio::Output, gpio::OutputConfig, ram, rng::Rng, timer::timg::TimerGroup};
+use esp_radio::Controller;
+use esp_radio::wifi::{ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState};
+use reqwless::{client::HttpClient, client::TlsConfig, client::TlsVerify, request::RequestBuilder};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -54,12 +41,7 @@ macro_rules! mk_static {
 }
 
 fn auth_header() -> heapless::String<64> {
-    const {
-        assert!(
-            "token ".len() + TOKEN.len() <= 64,
-            "OUBOT_TOKEN too long for auth header buffer"
-        )
-    };
+    const { assert!("token ".len() + TOKEN.len() <= 64, "OUBOT_TOKEN too long for auth header buffer") };
     let mut s = heapless::String::new();
     s.push_str("token ").unwrap();
     s.push_str(TOKEN).unwrap();
@@ -224,15 +206,11 @@ async fn main(spawner: Spawner) -> ! {
                     if status == 401 {
                         auth_failures += 1;
                         log::error!(
-                            "up: 401 unauthorized — token is invalid, re-flash with correct OUBOT_TOKEN ({}/{})",
-                            auth_failures,
+                            "up: 401 unauthorized — token is invalid, re-flash with correct OUBOT_TOKEN ({}/{})", auth_failures,
                             MAX_AUTH_FAILURES
                         );
                         if auth_failures >= MAX_AUTH_FAILURES {
-                            log::error!(
-                                "up: {} consecutive 401s — halting. Re-flash with valid OUBOT_TOKEN.",
-                                MAX_AUTH_FAILURES
-                            );
+                            log::error!("up: {} consecutive 401s — halting. Re-flash with valid OUBOT_TOKEN.", MAX_AUTH_FAILURES);
                             halt(&mut led).await;
                         }
                     } else {

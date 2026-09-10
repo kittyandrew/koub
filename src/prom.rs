@@ -1,7 +1,6 @@
 use lazy_static::lazy_static;
 use prometheus::{self, Encoder, GaugeVec, HistogramVec, IntCounter, IntCounterVec, IntGauge, IntGaugeVec, TextEncoder};
-use rocket::fairing::{Fairing, Info, Kind};
-use rocket::{Data, Request, Response, State};
+use rocket::{Data, Request, Response, State, fairing::Fairing, fairing::Info, fairing::Kind};
 use std::time::Instant;
 
 lazy_static! {
@@ -65,10 +64,7 @@ pub struct PrometheusCollection;
 #[rocket::async_trait]
 impl Fairing for PrometheusCollection {
     fn info(&self) -> Info {
-        Info {
-            name: "Prometheus metrics",
-            kind: Kind::Request | Kind::Response,
-        }
+        Info { name: "Prometheus metrics", kind: Kind::Request | Kind::Response }
     }
 
     async fn on_request(&self, request: &mut Request<'_>, _: &mut Data<'_>) {
@@ -90,16 +86,10 @@ impl Fairing for PrometheusCollection {
             // code below actually isn't artificially slow.
             let duration_timer = request.local_cache(|| DurationTimer(None));
             if let Some(duration) = duration_timer.0.map(|st| st.elapsed()) {
-                ENDPOINTS_REQUESTS_SERVED
-                    .local()
-                    .with_label_values(&[&method, &endpoint])
-                    .inc();
+                ENDPOINTS_REQUESTS_SERVED.local().with_label_values(&[&method, &endpoint]).inc();
 
                 let latency_ms = duration.as_micros() as f64 / 1000.;
-                ENDPOINT_REQUESTS_DURATION
-                    .local()
-                    .with_label_values(&[&method, &endpoint])
-                    .observe(latency_ms / 1000.);
+                ENDPOINT_REQUESTS_DURATION.local().with_label_values(&[&method, &endpoint]).observe(latency_ms / 1000.);
 
                 // While we can, lets add response header with timing as well.
                 response.set_raw_header("X-Response-Time", format!("{latency_ms} ms"));

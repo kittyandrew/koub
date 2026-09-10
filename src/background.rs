@@ -1,9 +1,8 @@
-use crate::{context, db, notifications, prom};
+use crate::{context, db, db::Pool, notifications, prom};
 use rocket::tokio;
-use rocket_db_pools::diesel::PgPool;
 use std::time::{Duration, SystemTime};
 
-pub async fn background_handle_down(context: context::Context, db_pool: PgPool) {
+pub async fn background_handle_down(context: context::Context, db_pool: Pool) {
     loop {
         let mut sleep_for = Duration::new(5, 0);
         let mut states_to_persist = Vec::new();
@@ -14,7 +13,7 @@ pub async fn background_handle_down(context: context::Context, db_pool: PgPool) 
             let now = SystemTime::now();
             let now_utc_minutes =
                 notifications::utc_minute_of_day(now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs());
-            for (_, item) in guard.iter_mut() {
+            for item in guard.values_mut() {
                 let query_at = item.uptime.touched_at + Duration::new(item.user.up_delay as u64, 0);
                 if let Ok(remaining) = query_at.duration_since(now) {
                     sleep_for = sleep_for.min(remaining);
@@ -23,15 +22,9 @@ pub async fn background_handle_down(context: context::Context, db_pool: PgPool) 
                 } else if item.user.is_in_maintenance_window(now_utc_minutes) {
                     // Maintenance window: suppress down transition
                 } else if let Some(duration) = item.uptime.go_down() {
-                    prom::UPTIME_STATE
-                        .with_label_values(&[&item.user.id.to_string()])
-                        .set(i64::from(&item.uptime.status));
+                    prom::UPTIME_STATE.with_label_values(&[&item.user.id.to_string()]).set(i64::from(&item.uptime.status));
                     states_to_persist.push(item.uptime.clone());
-                    tokio::spawn(notifications::dispatch_notifications(
-                        item.clone(),
-                        context.clone(),
-                        Some(duration),
-                    ));
+                    tokio::spawn(notifications::dispatch_notifications(item.clone(), context.clone(), Some(duration)));
                 }
             }
         }

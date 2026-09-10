@@ -8,11 +8,7 @@ pub struct Client {
 
 impl Client {
     pub fn new(server: String, token: Option<String>) -> Self {
-        Self {
-            http: reqwest::blocking::Client::new(),
-            server,
-            token,
-        }
+        Self { http: reqwest::blocking::Client::new(), server, token }
     }
 
     fn parse_response(resp: reqwest::blocking::Response) -> Result<Value, String> {

@@ -1,12 +1,8 @@
 use crate::{context, db, prom};
 use governor::{Quota, RateLimiter, clock::QuantaClock, state::InMemoryState};
-use rocket::fairing::{Fairing, Info, Kind};
-use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
-use rocket::{Data, Request, State};
-use std::net::IpAddr;
-use std::num::NonZero;
-use std::sync::Arc;
+use rocket::{Data, Request, State, fairing::Fairing, fairing::Info, fairing::Kind, http::Status};
+use std::{net::IpAddr, num::NonZero, sync::Arc};
 
 type IpLimiter = Arc<RateLimiter<IpAddr, dashmap::DashMap<IpAddr, InMemoryState>, QuantaClock>>;
 
@@ -25,10 +21,7 @@ pub struct IpRateLimitFairing;
 #[rocket::async_trait]
 impl Fairing for IpRateLimitFairing {
     fn info(&self) -> Info {
-        Info {
-            name: "IP Rate Limiter",
-            kind: Kind::Request,
-        }
+        Info { name: "IP Rate Limiter", kind: Kind::Request }
     }
 
     async fn on_request(&self, request: &mut Request<'_>, _: &mut Data<'_>) {
@@ -67,10 +60,7 @@ fn token_prefix(raw: &str) -> &'static str {
 }
 
 fn log_auth_failure(request: &Request<'_>, reason: &str, raw_header: Option<&str>) {
-    let ip = request
-        .client_ip()
-        .map(|ip| ip.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+    let ip = request.client_ip().map(|ip| ip.to_string()).unwrap_or_else(|| "unknown".to_string());
     let prefix = raw_header.map(token_prefix).unwrap_or("none");
     warn!("[AUTH] ip={ip} result={reason} prefix={prefix}");
     prom::AUTH_FAILURES.with_label_values(&[reason]).inc();

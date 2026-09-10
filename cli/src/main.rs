@@ -39,11 +39,7 @@ fn main() {
     let client = Client::new(cli.server, cli.token.clone());
 
     match cli.command {
-        Commands::Init {
-            invite,
-            language,
-            invites,
-        } => {
+        Commands::Init { invite, language, invites } => {
             // If invite is provided, create regular user; otherwise create admin (first user)
             let is_admin = invite.is_none();
             let user_type = if is_admin { "Admin" } else { "Normal" };
@@ -57,11 +53,8 @@ fn main() {
                 body["invite"] = serde_json::json!(inv);
             }
             handle_response_with(client.post("/api/v1/users", &body), cli.raw, |json| {
-                if let Some(token) = json
-                    .get("state")
-                    .and_then(|s| s.get("user"))
-                    .and_then(|u| u.get("access_token"))
-                    .and_then(|t| t.as_str())
+                if let Some(token) =
+                    json.get("state").and_then(|s| s.get("user")).and_then(|u| u.get("access_token")).and_then(|t| t.as_str())
                 {
                     let label = if is_admin { "Admin" } else { "User" };
                     println!("{} created successfully!", label);
@@ -118,10 +111,7 @@ fn main() {
                     let enabled = matches!(cmd, NtfyCommands::Enable);
                     let body = serde_json::json!({"enabled": enabled});
                     handle_response_with(client.patch("/api/v1/me/ntfy", &body), cli.raw, |json| {
-                        println!(
-                            "Ntfy notifications {}",
-                            if get_bool(json, "enabled") { "enabled" } else { "disabled" }
-                        );
+                        println!("Ntfy notifications {}", if get_bool(json, "enabled") { "enabled" } else { "disabled" });
                     });
                 }
             }
