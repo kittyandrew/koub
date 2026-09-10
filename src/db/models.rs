@@ -1,7 +1,7 @@
 use crate::schema::{invites, ntfy_users, uptime_states, users};
+use diesel::prelude::*;
 use rand::{Rng, distributions::Alphanumeric};
 use rocket::serde::{Deserialize, Serialize};
-use rocket_db_pools::diesel::prelude::*;
 use std::time::SystemTime;
 use uuid::Uuid;
 

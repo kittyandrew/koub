@@ -1,24 +1,16 @@
-use crate::actions::{self, NewUser};
-use crate::{DB, bauth, context::Context, db, prom};
-use rocket::State;
-use rocket::serde::json::{Json, Value, json};
-use rocket_db_pools::Connection;
+use crate::{actions, actions::NewUser, bauth, context::Context, db, db::Connection, prom};
+use rocket::{State, serde::json::Json, serde::json::Value, serde::json::json};
 
 /// Create a new user (first admin needs no invite; subsequent users need invite token)
 #[post("/api/v1/users", data = "<opts>")]
 pub async fn create_user(
-    _rl: bauth::RateLimitGuard,
-    opts: Json<NewUser>,
-    mut conn: Connection<DB>,
-    context: &State<Context>,
+    _rl: bauth::RateLimitGuard, opts: Json<NewUser>, mut conn: Connection<'_>, context: &State<Context>,
 ) -> Value {
-    match actions::create_user(&opts, &mut conn, context).await {
+    match actions::create_user(&opts, &mut conn.0, context).await {
         Ok(state) => {
             let uid_str = state.user.id.to_string();
             prom::ACTIVE_USERS.inc();
-            prom::UPTIME_STATE
-                .with_label_values(&[&uid_str])
-                .set(i64::from(&state.uptime.status));
+            prom::UPTIME_STATE.with_label_values(&[&uid_str]).set(i64::from(&state.uptime.status));
             prom::LAST_SEEN_TIMESTAMP.with_label_values(&[&uid_str]).set(0.0);
             json!({"status": 200, "state": state})
         }
@@ -37,8 +29,8 @@ pub async fn get_me(bauth: bauth::BAuth, context: &State<Context>) -> Value {
 
 /// Regenerate access token (for Pico W client)
 #[post("/api/v1/me/regenerate-token")]
-pub async fn regenerate_token(bauth: bauth::BAuth, mut conn: Connection<DB>, context: &State<Context>) -> Value {
-    match db::regenerate_user_token(&mut conn, bauth.uid).await {
+pub async fn regenerate_token(bauth: bauth::BAuth, mut conn: Connection<'_>, context: &State<Context>) -> Value {
+    match db::regenerate_user_token(&mut conn.0, bauth.uid).await {
         Ok(new_token) => {
             // Update in-memory state
             let old_token = {
@@ -89,17 +81,14 @@ pub struct UpdateNtfy {
 
 #[patch("/api/v1/me/ntfy", data = "<opts>")]
 pub async fn update_ntfy_settings(
-    bauth: bauth::BAuth,
-    opts: Json<UpdateNtfy>,
-    mut conn: Connection<DB>,
-    context: &State<Context>,
+    bauth: bauth::BAuth, opts: Json<UpdateNtfy>, mut conn: Connection<'_>, context: &State<Context>,
 ) -> Value {
     let ntfy_id = match context.users.read().await.get(&bauth.uid) {
         Some(state) => state.ntfy.id,
         None => return json!({"status": 404, "error": "User not found"}),
     };
 
-    match db::update_ntfy_enabled(&mut conn, ntfy_id, opts.enabled).await {
+    match db::update_ntfy_enabled(&mut conn.0, ntfy_id, opts.enabled).await {
         Ok(_) => {
             // Update in-memory state
             if let Some(state) = context.users.write().await.get_mut(&bauth.uid) {
@@ -132,17 +121,14 @@ pub struct UpdateLanguage {
 
 #[patch("/api/v1/me/language", data = "<opts>")]
 pub async fn update_language(
-    bauth: bauth::BAuth,
-    opts: Json<UpdateLanguage>,
-    mut conn: Connection<DB>,
-    context: &State<Context>,
+    bauth: bauth::BAuth, opts: Json<UpdateLanguage>, mut conn: Connection<'_>, context: &State<Context>,
 ) -> Value {
     let lang = &opts.language_code;
     if let Err(err) = actions::validate_language_code(lang) {
         return json!({"status": 400, "error": err});
     }
 
-    match db::update_user_language(&mut conn, bauth.uid, lang).await {
+    match db::update_user_language(&mut conn.0, bauth.uid, lang).await {
         Ok(_) => {
             // Update in-memory state
             if let Some(state) = context.users.write().await.get_mut(&bauth.uid) {
@@ -160,7 +146,7 @@ pub async fn update_language(
 /// @NOTE: Persists to DB inside the write lock to prevent the race where
 ///  background_handle_down's deferred DB write could overwrite Paused with Down.
 #[post("/api/v1/me/pause")]
-pub async fn pause_monitoring(bauth: bauth::BAuth, mut conn: Connection<DB>, context: &State<Context>) -> Value {
+pub async fn pause_monitoring(bauth: bauth::BAuth, mut conn: Connection<'_>, context: &State<Context>) -> Value {
     let mut guard = context.users.write().await;
     let Some(item) = guard.get_mut(&bauth.uid) else {
         return json!({"status": 404, "error": "User not found"});
@@ -168,10 +154,8 @@ pub async fn pause_monitoring(bauth: bauth::BAuth, mut conn: Connection<DB>, con
     if let Err(err) = item.uptime.pause() {
         return json!({"status": 400, "error": err});
     }
-    prom::UPTIME_STATE
-        .with_label_values(&[&bauth.uid.to_string()])
-        .set(i64::from(&item.uptime.status));
-    if let Err(err) = db::update_uptime_state(&mut conn, &item.uptime).await {
+    prom::UPTIME_STATE.with_label_values(&[&bauth.uid.to_string()]).set(i64::from(&item.uptime.status));
+    if let Err(err) = db::update_uptime_state(&mut conn.0, &item.uptime).await {
         warn!("Failed to persist pause state: {err:?}");
     }
     json!({"status": 200, "message": "Monitoring paused"})
@@ -179,7 +163,7 @@ pub async fn pause_monitoring(bauth: bauth::BAuth, mut conn: Connection<DB>, con
 
 /// Resume monitoring — restores pre-pause state, refreshes touched_at.
 #[post("/api/v1/me/unpause")]
-pub async fn unpause_monitoring(bauth: bauth::BAuth, mut conn: Connection<DB>, context: &State<Context>) -> Value {
+pub async fn unpause_monitoring(bauth: bauth::BAuth, mut conn: Connection<'_>, context: &State<Context>) -> Value {
     let mut guard = context.users.write().await;
     let Some(item) = guard.get_mut(&bauth.uid) else {
         return json!({"status": 404, "error": "User not found"});
@@ -187,10 +171,8 @@ pub async fn unpause_monitoring(bauth: bauth::BAuth, mut conn: Connection<DB>, c
     if let Err(err) = item.uptime.unpause() {
         return json!({"status": 400, "error": err});
     }
-    prom::UPTIME_STATE
-        .with_label_values(&[&bauth.uid.to_string()])
-        .set(i64::from(&item.uptime.status));
-    if let Err(err) = db::update_uptime_state(&mut conn, &item.uptime).await {
+    prom::UPTIME_STATE.with_label_values(&[&bauth.uid.to_string()]).set(i64::from(&item.uptime.status));
+    if let Err(err) = db::update_uptime_state(&mut conn.0, &item.uptime).await {
         warn!("Failed to persist unpause state: {err:?}");
     }
     json!({"status": 200, "message": "Monitoring resumed"})
@@ -221,10 +203,7 @@ pub struct UpdateSettings {
 
 #[patch("/api/v1/me/settings", data = "<opts>")]
 pub async fn update_settings(
-    bauth: bauth::BAuth,
-    opts: Json<UpdateSettings>,
-    mut conn: Connection<DB>,
-    context: &State<Context>,
+    bauth: bauth::BAuth, opts: Json<UpdateSettings>, mut conn: Connection<'_>, context: &State<Context>,
 ) -> Value {
     // Validate up_delay
     if let Some(delay) = opts.up_delay
@@ -253,7 +232,7 @@ pub async fn update_settings(
         }
     }
 
-    match db::update_user_settings(&mut conn, bauth.uid, opts.up_delay, maint_start, maint_end).await {
+    match db::update_user_settings(&mut conn.0, bauth.uid, opts.up_delay, maint_start, maint_end).await {
         Ok(_) => {
             // Update in-memory state
             let mut users = context.users.write().await;

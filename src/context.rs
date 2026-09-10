@@ -1,8 +1,6 @@
-use crate::db::{ID, Invite, UserState};
-use crate::ntfy::NtfyClient;
+use crate::{db::ID, db::Invite, db::UserState, ntfy::NtfyClient};
 use rocket::tokio::sync::{Mutex, RwLock};
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(Debug, Clone)]
 pub struct Context {

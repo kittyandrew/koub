@@ -32,13 +32,21 @@ source ./setup_local.sh
 - **Rocket log level**: Successful requests aren't logged at default level. Use `curl .../api/v1/metrics | grep oubot_uptime` to verify heartbeats.
 - **`nix develop -c`**: Use this for stateless commands (e.g., `nix develop -c oubot-cli me`). The CLI and espflash are both in the devShell.
 
+## Rust conventions
+
+- Use Rust edition 2024. Run `cargo fix --edition` before changing older editions in `Cargo.toml`.
+- Apply `rustfmt.toml` before formatting: 131 columns for lines and width heuristics, with compressed function parameters.
+- Group imports into as few single-line `use` statements as fit within 131 columns. After formatting, combine same-crate leftovers with another fitting statement.
+- Run `kitty-review` before committing each changeset.
+- Add tests only for high-value behavior and failure paths. Use existing checks for routine dependency and formatting changes.
+
 ## Architecture
 
 ### Core Components
 
 - **src/main.rs** - Entry point, Rocket server setup, fairings, DB startup load
 - **src/api/** - REST endpoints split into `core.rs` (health, heartbeat), `user.rs` (self-service), `admin.rs` (admin-only)
-- **src/db/** - `mod.rs` has query functions, `models.rs` has Diesel ORM structs/enums (re-exported via `db::`)
+- **src/db/** - `mod.rs` has query functions, the `bb8` pool type, and the connection request guard. `models.rs` has Diesel ORM structs/enums (re-exported via `db::`). Pool setup is in `src/main.rs`.
 - **src/background.rs** - Background task: monitors uptime states, triggers "down" notifications
 - **src/notifications.rs** - Ntfy dispatch, duration formatting, i18n (locales), `utc_minute_of_day`
 - **src/context.rs** - In-memory state (`Context`) with `RwLock<HashMap>` for users, tokens, uptime states
@@ -142,8 +150,8 @@ Server config in `Rocket.toml` (port 8080, `ip_header = "X-Forwarded-For"` for r
 
 ## Key Dependencies
 
-- **rocket 0.5** - Async web framework
-- **diesel 2.1** - PostgreSQL ORM
+- **rocket** - Async web framework; the HTTP/2-capable development revision is pinned in `Cargo.toml`.
+- **diesel / diesel-async** - PostgreSQL ORM and async queries, with the upstream `bb8` pool integration. Versions are in `Cargo.toml`.
 - **governor** - IP-based rate limiting with DashMap
 - **fluent-templates** - i18n (locales in `locales/`)
 
@@ -160,4 +168,3 @@ See `docs/specs/esp32-security-metrics.md` for the full design spec. See `docs/S
 `clients/pico-w/` — Rust no_std firmware (embassy-rp 0.10 + cyw43 0.7 + reqwless 0.14). Same heartbeat/backoff/halt patterns as the ESP32 client. Board: Pico W (RP2040 Cortex-M0+), LED on CYW43439 WiFi chip (active-high).
 
 Build/flash: see `docs/usage/pico-w.md`. Nix build: `nix build .#pico-w-client --impure` (requires all 4 `OUBOT_*` env vars). DevShell uses `build-std` (nightly); Nix build uses fenix pre-built `rust-std` instead. CYW43 firmware blobs (~231KB) in `clients/pico-w/firmware/` (Cypress Permissive Binary License).
-

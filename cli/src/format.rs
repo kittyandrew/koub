@@ -81,11 +81,7 @@ pub fn format_me(json: &Value) {
             (Some(s), Some(e)) => println!("Maintenance:  {:02}:{:02}-{:02}:{:02} UTC", s / 60, s % 60, e / 60, e % 60),
             _ => println!("Maintenance:  [not set]"),
         }
-        println!(
-            "Invites:      {}/{}",
-            get_i64(user, "invites_used"),
-            get_i64(user, "invites_limit")
-        );
+        println!("Invites:      {}/{}", get_i64(user, "invites_used"), get_i64(user, "invites_limit"));
 
         if let Some(ntfy) = ntfy {
             println!();

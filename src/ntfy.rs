@@ -4,9 +4,7 @@ use lazy_static::lazy_static;
 use rand::{Rng, distributions::Alphanumeric};
 use reqwest::header;
 use rocket::serde::{Deserialize, Serialize, json::Value};
-use std::env::var;
-use std::error::Error;
-use std::fmt;
+use std::{env::var, error::Error, fmt};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -62,17 +60,9 @@ impl NtfyClient {
         let mut headers = header::HeaderMap::new();
         headers.insert(header::AUTHORIZATION, auth_header);
 
-        let client = reqwest::Client::builder()
-            .user_agent("OpenUptimeBot/v0")
-            .default_headers(headers)
-            .build()
-            .expect("RIP");
+        let client = reqwest::Client::builder().user_agent("OpenUptimeBot/v0").default_headers(headers).build().expect("RIP");
 
-        NtfyClient {
-            base_url: NTFY_BASE_URL.clone(),
-            base_tier: NTFY_USER_TIER.clone(),
-            client,
-        }
+        NtfyClient { base_url: NTFY_BASE_URL.clone(), base_tier: NTFY_USER_TIER.clone(), client }
     }
 
     fn generate_new_user(&self, enabled: bool) -> NtfyUser {
@@ -109,23 +99,13 @@ impl NtfyClient {
     pub async fn create_new_user(&self, enabled: bool) -> Result<NtfyUser> {
         let user = self.generate_new_user(enabled);
 
-        let new_user_response = self
-            .client
-            .put(format!("{base}/v1/users", base = self.base_url))
-            .json(&user)
-            .send()
-            .await?;
+        let new_user_response = self.client.put(format!("{base}/v1/users", base = self.base_url)).json(&user).send().await?;
 
         if new_user_response.status() != 200 {
             return Err(Box::new(NtfyCustomError::new(new_user_response.json::<Value>().await?)));
         }
 
-        let access_response = self
-            .client
-            .post(format!("{base}/v1/users/access", base = self.base_url))
-            .json(&user)
-            .send()
-            .await?;
+        let access_response = self.client.post(format!("{base}/v1/users/access", base = self.base_url)).json(&user).send().await?;
 
         if access_response.status() != 200 {
             return Err(Box::new(NtfyCustomError::new(access_response.json::<Value>().await?)));

@@ -2,8 +2,7 @@ use crate::{context, db, ntfy, prom};
 use fluent::types::FluentValue;
 use fluent_templates::{Loader, static_loader};
 use rocket::tokio;
-use std::collections::HashMap;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 use unic_langid::LanguageIdentifier;
 
 static_loader! {
@@ -52,10 +51,7 @@ pub fn format_duration(lang: &LanguageIdentifier, duration: Duration) -> String 
 
 pub async fn dispatch_notifications(item: db::UserState, context: context::Context, duration: Option<Duration>) {
     let lang: LanguageIdentifier = item.user.language_code.parse().unwrap_or_else(|_| {
-        warn!(
-            "Invalid language code '{}' for user {}, falling back to 'en'",
-            item.user.language_code, item.user.id
-        );
+        warn!("Invalid language code '{}' for user {}, falling back to 'en'", item.user.language_code, item.user.id);
         "en".parse().unwrap()
     });
     if !SUPPORTED_LOCALES.contains(&lang.language.as_str()) {
@@ -161,10 +157,7 @@ mod tests {
     fn test_format_duration_uk_days_singular() {
         let lang = uk();
         assert_eq!(format_duration(&lang, Duration::from_secs(86400)), "1 день");
-        assert_eq!(
-            format_duration(&lang, Duration::from_secs(86400 + 12 * 3600 + 22 * 60)),
-            "1 день 12 год 22 хв"
-        );
+        assert_eq!(format_duration(&lang, Duration::from_secs(86400 + 12 * 3600 + 22 * 60)), "1 день 12 год 22 хв");
         assert_eq!(format_duration(&lang, Duration::from_secs(21 * 86400)), "21 день");
         assert_eq!(format_duration(&lang, Duration::from_secs(31 * 86400)), "31 день");
         assert_eq!(format_duration(&lang, Duration::from_secs(101 * 86400)), "101 день");
@@ -227,10 +220,7 @@ mod tests {
     fn test_format_duration_en_days() {
         let lang = en();
         assert_eq!(format_duration(&lang, Duration::from_secs(86400)), "1 day");
-        assert_eq!(
-            format_duration(&lang, Duration::from_secs(86400 + 12 * 3600 + 22 * 60)),
-            "1 day 12 hr 22 min"
-        );
+        assert_eq!(format_duration(&lang, Duration::from_secs(86400 + 12 * 3600 + 22 * 60)), "1 day 12 hr 22 min");
         assert_eq!(format_duration(&lang, Duration::from_secs(2 * 86400)), "2 days");
         assert_eq!(format_duration(&lang, Duration::from_secs(10 * 86400)), "10 days");
         assert_eq!(format_duration(&lang, Duration::from_secs(21 * 86400)), "21 days");

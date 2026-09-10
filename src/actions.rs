@@ -1,7 +1,6 @@
-use crate::context::Context;
-use crate::db::{self, Invite, User, UserState};
+use crate::{context::Context, db, db::Invite, db::User, db::UserState};
+use diesel_async::AsyncPgConnection;
 use rocket::serde::Deserialize;
-use rocket_db_pools::diesel::AsyncPgConnection as Conn;
 
 #[derive(Debug, Deserialize)]
 #[serde(crate = "rocket::serde")]
@@ -27,7 +26,7 @@ pub fn validate_language_code(lang: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn create_user(opts: &NewUser, conn: &mut Conn, context: &Context) -> Result<UserState, String> {
+pub async fn create_user(opts: &NewUser, conn: &mut AsyncPgConnection, context: &Context) -> Result<UserState, String> {
     let mut invite_id: Option<db::ID> = None;
     let mut invite_token_key: Option<String> = None;
 
@@ -35,11 +34,7 @@ pub async fn create_user(opts: &NewUser, conn: &mut Conn, context: &Context) -> 
     //  where concurrent requests both see an empty user map and create multiple admins.
     //  The lock is only contended during the one-time bootstrap; invite-based creation
     //  skips it entirely.
-    let _init_guard = if opts.invite.is_none() {
-        Some(context.init_lock.lock().await)
-    } else {
-        None
-    };
+    let _init_guard = if opts.invite.is_none() { Some(context.init_lock.lock().await) } else { None };
 
     if let Some(new_invite) = &opts.invite {
         let tokens = context.invite_tokens.read().await;
@@ -62,11 +57,8 @@ pub async fn create_user(opts: &NewUser, conn: &mut Conn, context: &Context) -> 
     }
 
     // Invited users are always Normal with zero invites — only first-init (no invite) can be Admin
-    let (user_type, invites_limit) = if invite_id.is_some() {
-        (db::UserType::Normal, 0)
-    } else {
-        (opts.user_type, opts.invites_limit)
-    };
+    let (user_type, invites_limit) =
+        if invite_id.is_some() { (db::UserType::Normal, 0) } else { (opts.user_type, opts.invites_limit) };
 
     // Validate up_delay if provided
     if let Some(up_delay) = opts.up_delay
@@ -82,19 +74,12 @@ pub async fn create_user(opts: &NewUser, conn: &mut Conn, context: &Context) -> 
         Err(err) => return Err(format!("{err:?}")),
     };
     let new_user = User::new(user_type, invites_limit, opts.up_delay, opts.language_code.clone(), &ntfy);
-    let new_state = db::UserState {
-        uptime: db::UptimeState::new(new_user.id),
-        user: new_user,
-        ntfy,
-    };
+    let new_state = db::UserState { uptime: db::UptimeState::new(new_user.id), user: new_user, ntfy };
 
     if let Err(err) = db::create_new_state(conn, &new_state, invite_id.as_ref()).await {
         // Clean up the ntfy user we already created on the external server
         if let Err(cleanup_err) = context.ntfy.delete_user(&new_state.ntfy.username).await {
-            warn!(
-                "Failed to clean up ntfy user '{}' after DB error: {cleanup_err:?}",
-                new_state.ntfy.username
-            );
+            warn!("Failed to clean up ntfy user '{}' after DB error: {cleanup_err:?}", new_state.ntfy.username);
         }
         return Err(format!("{err:?}"));
     };
@@ -114,7 +99,7 @@ pub struct NewInvite {
     pub owner_id: db::ID,
 }
 
-pub async fn create_invite(opts: &NewInvite, conn: &mut Conn, context: &Context) -> Result<Invite, String> {
+pub async fn create_invite(opts: &NewInvite, conn: &mut AsyncPgConnection, context: &Context) -> Result<Invite, String> {
     {
         let users = context.users.read().await;
         match users.get(&opts.owner_id) {

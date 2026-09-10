@@ -5,20 +5,11 @@ use cyw43::JoinOptions;
 use cyw43_pio::PioSpi;
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_net::{
-    StackResources,
-    dns::DnsSocket,
-    tcp::client::{TcpClient, TcpClientState},
-};
-use embassy_rp::bind_interrupts;
-use embassy_rp::clocks::RoscRng;
-use embassy_rp::dma;
-use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::{DMA_CH0, PIO0};
+use embassy_net::{StackResources, dns::DnsSocket, tcp::client::TcpClient, tcp::client::TcpClientState};
 use embassy_rp::pio::{self, Pio};
+use embassy_rp::{bind_interrupts, clocks::RoscRng, dma, gpio::Level, gpio::Output, peripherals::DMA_CH0, peripherals::PIO0};
 use embassy_time::{Duration, Timer};
-use reqwless::client::{HttpClient, TlsConfig, TlsVerify};
-use reqwless::request::RequestBuilder;
+use reqwless::{client::HttpClient, client::TlsConfig, client::TlsVerify, request::RequestBuilder};
 use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
@@ -39,12 +30,7 @@ bind_interrupts!(struct Irqs {
 
 fn auth_header() -> heapless::String<64> {
     // @NOTE: Use core::assert! because defmt overrides assert! and doesn't work in const blocks.
-    const {
-        core::assert!(
-            "token ".len() + TOKEN.len() <= 64,
-            "OUBOT_TOKEN too long for auth header buffer"
-        )
-    };
+    const { core::assert!("token ".len() + TOKEN.len() <= 64, "OUBOT_TOKEN too long for auth header buffer") };
     let mut s = heapless::String::new();
     s.push_str("token ").unwrap();
     s.push_str(TOKEN).unwrap();
@@ -250,10 +236,7 @@ async fn main(spawner: Spawner) {
                             auth_failures, MAX_AUTH_FAILURES
                         );
                         if auth_failures >= MAX_AUTH_FAILURES {
-                            error!(
-                                "up: {} consecutive 401s — halting. Re-flash with valid OUBOT_TOKEN.",
-                                MAX_AUTH_FAILURES
-                            );
+                            error!("up: {} consecutive 401s — halting. Re-flash with valid OUBOT_TOKEN.", MAX_AUTH_FAILURES);
                             halt(&mut control).await;
                         }
                     } else {

@@ -12,9 +12,9 @@ strip = true
 lto = "fat"
 
 [dependencies]
-rocket = { version = "0.5.1", features = ["json", "uuid"] }
-rocket_db_pools = { version = "0.2.0", features = ["diesel_postgres"] }
-diesel = { version = "2.1.6", features = ["postgres", "uuid"] }
+rocket = { git = "https://github.com/rwf2/Rocket", rev = "3a54d079aef060a8f732bd04ea54b0581a604087", features = ["json", "uuid"] }
+diesel-async = { version = "0.9.0", features = ["postgres", "bb8"] }
+diesel = { version = "2.3.10", features = ["postgres", "uuid"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 prometheus = { version = "0.14", features = ["nightly"] }
 uuid = { version = "1.11.0", features = ["v4", "fast-rng", "serde"] }
