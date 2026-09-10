@@ -16,7 +16,7 @@ rocket = { version = "0.5.1", features = ["json", "uuid"] }
 rocket_db_pools = { version = "0.2.0", features = ["diesel_postgres"] }
 diesel = { version = "2.1.6", features = ["postgres", "uuid"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
-prometheus = { version = "0.13.4", features = ["nightly"] }
+prometheus = { version = "0.14", features = ["nightly"] }
 uuid = { version = "1.11.0", features = ["v4", "fast-rng", "serde"] }
 reqwest = { version = "0.12.9", features = ["json"] }
 fluent-templates = "0.11.0"
