@@ -3,8 +3,9 @@ extern crate rocket;
 
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use prometheus::TextEncoder;
-use rocket::{fairing::AdHoc, tokio};
-use std::{env::var, time::Duration};
+use rocket::figment::providers::{Env, Format, Serialized, Toml};
+use rocket::{fairing::AdHoc, figment::Figment, figment::Profile, tokio};
+use std::{env::var, io, io::IsTerminal, time::Duration};
 
 mod actions;
 mod api;
@@ -37,11 +38,19 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         .build(manager)
         .await?;
 
+    // @NOTE: Keep fail2ban's [AUTH] warnings visible and uncolored in service logs. - Sep 10, 2026
+    let figment = Figment::from(rocket::Config::default())
+        .merge(Serialized::default("log_level", if cfg!(debug_assertions) { "info" } else { "warn" }))
+        .merge(Serialized::default("cli_colors", io::stdout().is_terminal() && io::stderr().is_terminal()))
+        .merge(Toml::file(Env::var_or("ROCKET_CONFIG", "Rocket.toml")).nested())
+        .merge(Env::prefixed("ROCKET_").ignore(&["PROFILE"]).global())
+        .select(Profile::from_env_or("ROCKET_PROFILE", rocket::Config::DEFAULT_PROFILE));
+
     // @WARNING: Every route handler MUST use BAuth, AdminAuth, or RateLimitGuard
     //  to ensure IP rate limiting coverage. The IpRateLimitFairing sets a flag but
     //  can't reject requests — guards must check the flag.
     //  The route-guard-lint check in flake.nix enforces this at build time.
-    rocket::build()
+    rocket::custom(figment)
         .mount(
             "/",
             routes![
