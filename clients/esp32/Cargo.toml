@@ -14,7 +14,7 @@ esp-hal = { version = "1.0.0", features = ["esp32c3", "log-04", "unstable"] }
 esp-println = { version = "0.16.1", features = ["esp32c3", "log-04", "timestamp"] }
 esp-radio = { version = "0.17.0", features = ["esp32c3", "esp-alloc", "log-04", "smoltcp", "unstable", "wifi"] }
 esp-rtos = { version = "0.2.0", features = ["esp32c3", "esp-alloc", "esp-radio", "embassy", "log-04"] }
-heapless = "0.8"
+heapless = "0.9.4"
 log = { version = "0.4", default-features = false }
 reqwless = { version = "0.13.0", default-features = false, features = ["embedded-tls"] }
 smoltcp = { version = "0.12.0", default-features = false, features = [
